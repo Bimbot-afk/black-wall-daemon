@@ -37,8 +37,13 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
 
         if method=='CONNECT':
-            server_socket.connect((url_host, 443))
-            c_socket.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            try:
+                server_socket.connect((url_host, 443))
+                c_socket.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+
+            except Exception as e:
+                print("[!] Connection failed", e)
+                return
 
             inputs = [c_socket, server_socket]
 
@@ -53,7 +58,7 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                         else:
                             print("[+] Closing conection with: ", server_socket.getpeername())
                             server_socket.close()
-                            break
+                            return
 
                     elif sock is server_socket:
                         server_responce = server_socket.recv(4096)
@@ -62,7 +67,7 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                         else:
                             print("[+] Closing conection with: ", c_socket.getpeername())
                             c_socket.close()
-                            break
+                            return
         else:
             server_socket.connect((urlparsed, url_port))
             server_socket.sendall(brute_data)
