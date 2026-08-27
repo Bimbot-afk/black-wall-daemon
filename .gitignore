@@ -1,2 +1,9 @@
 venv/
 __pycache__/
+*.crt
+*.key
+*.csr
+*.ext
+blackwall_ca.crt
+blackwall_ca.key
+blackwall_ca.srl
