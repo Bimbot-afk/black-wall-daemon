@@ -7,3 +7,7 @@ __pycache__/
 blackwall_ca.crt
 blackwall_ca.key
 blackwall_ca.srl
+certs/
+.vscode/
+compile_commands.json
+emsdk/

@@ -2,7 +2,7 @@ import socket
 from urllib.parse import urlparse
 import threading
 import select
-import os, subprocess, ssl
+import os, subprocess, ssl, re
 
 HOST = '127.0.0.1'
 PORT = 8080
@@ -62,7 +62,6 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
         if method=='CONNECT':
             try:
                 c_socket.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-
                 cert_path, key_path = certificade_forge(url_host)
 
                 ctx_serv = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -87,20 +86,27 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                         brute_data = c_ssl.recv(4096)
                         print(f"[!!!!!unencrypted] {brute_data}")
                         if brute_data:
+                            if b"Accept-Encoding" in brute_data:
+                                brute_data = re.sub(b"Accept-Encoding: .*?\r\n", b"Accept-Encoding: identity\r\n", brute_data, flags=re.IGNORECASE)
+                            
                             s_ssl.sendall(brute_data)
                         else:
                             print("[+] Closing conection with: ", s_ssl.getpeername())
                             s_ssl.close()
+                            c_ssl.close()
                             return
 
                     elif sock is s_ssl:
                         server_responce = s_ssl.recv(4096)
                         print(f"[!!!!!unencrypted] {server_responce}")
                         if server_responce:
+                            server_responce = inyect_ice(server_responce)
+
                             c_ssl.sendall(server_responce)
                         else:
                             print("[+] Closing conection with: ", c_ssl.getpeername())
                             c_ssl.close()
+                            s_ssl.close()
                             return
         else:
             server_socket.connect((urlparsed, url_port))
@@ -167,6 +173,29 @@ def certificade_forge(domain):
         subprocess.run(["openssl", "x509", "-req", "-in", csr_path, "-CA", "blackwall_ca.crt", "-CAkey", "blackwall_ca.key", "-CAcreateserial", "-out", cert_path, "-days", "365", "-extfile", ext_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     return cert_path, key_path
+
+def inyect_ice(brute_package):
+    try:
+        with open("ice_module.js", "r", encoding="utf-8") as f:
+            ice_js = f.read()
+    except FileNotFoundError:
+        return brute_package
+
+    ice_payload = f"<script>{ice_js} Module.onRuntimeInitialized = function() {{ Module.ccall('deploy_defense', null, [], []); }};</script>"
+    ice_payload_bytes = ice_payload.encode('utf-8')
+
+    if b"<head>" in brute_package or b"<HEAD>" in brute_package:
+        brute_package = brute_package.replace(b"<head>", b"<head>" + ice_payload_bytes)
+        brute_package = brute_package.replace(b"<HEAD>", b"<HEAD>" + ice_payload_bytes)
+
+    match = re.search(b"content-length: (\\d+)", brute_package, re.IGNORECASE)
+
+    if match:
+        orig_length = int(match.group(1))
+        new_lenght = orig_length + len(ice_payload_bytes)
+        brute_package = re.sub(b"Content-Length: \\d+", f"Content-Length: {new_lenght}".encode(), brute_package, count=1, flags=re.IGNORECASE)
+
+    return brute_package
 
 if __name__ == '__main__':
     try:
