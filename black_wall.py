@@ -5,9 +5,12 @@ import threading
 import select
 import os, subprocess, ssl, re
 import decompiler as decm
+from cryptography import x509
+
 
 HOST = '127.0.0.1'
 PORT = 8080
+ 
 
 def check_certs():
     os.makedirs("certs", exist_ok=True)
@@ -22,7 +25,7 @@ def check_http_conection(Data):
     return False
 
 def handle_client(c_socket):
-    try:
+    try: 
         brute_data = c_socket.recv(4096)
 
         if not brute_data:
@@ -222,6 +225,19 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                         
                         full_package = headers + body
                         print(f"[!!!!!unencrypted client] {headers[:100]}...")
+
+                        # web wasaaaa detection guys T_T
+
+                        ice_match = re.search(b'/ice_module.wasm', headers, flags=re.IGNORECASE)
+
+                        if ice_match:
+                            with open("ice_module.wasm", "rb") as r:
+                                ice_ejecu = r.read()
+                                wasm_len = len(ice_ejecu)
+                                headers_w_ice = (f'HTTP/1.1 200 OK\r\nContent-Type: application/wasm\r\nContent-Length: {wasm_len}\r\n\r\n').encode()
+                                c_ssl.sendall(headers_w_ice + ice_ejecu)
+                                continue
+
                         s_ssl.sendall(full_package)
 
                     elif sock is s_ssl:
@@ -243,7 +259,11 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
 
                         headers = ICE_s(headers)
                         full_package = headers + body
-                        full_package = inyect_ice(full_package)
+
+                        if b'content-type: text/html' in headers:
+                            full_package = inyect_ice(full_package)
+                        else:
+                            print("[!] No html no bitches :C")
 
                         print(f"[!!!!!unencrypted server] {headers[:100]}...")
                         c_ssl.sendall(full_package)
@@ -317,13 +337,14 @@ def inyect_ice(brute_package):
     ice_payload = f"<script>{ice_js} Module.onRuntimeInitialized = function() {{ Module.ccall('deploy_defense', null, [], []); }};</script>"
     ice_payload_bytes = ice_payload.encode('utf-8')
 
-    if b"<head>" in brute_package or b"<HEAD>" in brute_package:
-        if b"<head>" in brute_package:
-            brute_package = brute_package.replace(b"<head>", b"<head>" + ice_payload_bytes, 1)
-        elif b"<HEAD>" in brute_package:
-            brute_package = brute_package.replace(b"<HEAD>", b"<HEAD>" + ice_payload_bytes, 1)
+    brute_package = re.sub(
+        b"(<head\\b[^>]*>)", 
+        b"\\g<1>" + ice_payload_bytes, 
+        1, 
+        flags=re.IGNORECASE
+    )
 
-        if b"\r\n\r\n" in brute_package:
+    if b"\r\n\r\n" in brute_package:
             headers, body = brute_package.split(b"\r\n\r\n", 1)
             body_length = len(body)
 
