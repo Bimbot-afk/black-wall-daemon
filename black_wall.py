@@ -1,11 +1,10 @@
-from collections import abc
 import socket
 from urllib.parse import urlparse
 import threading
 import select
 import os, subprocess, ssl, re
 import decompiler as decm
-from cryptography import x509
+import certificad_forge as forge
 
 
 HOST = '127.0.0.1'
@@ -190,7 +189,7 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
         if method == 'CONNECT':
             try:
                 c_socket.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-                cert_path, key_path = certificade_forge(url_host)
+                cert_path, key_path = forge.certificade_forge(url_host)
 
                 ctx_serv = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
                 ctx_serv.load_cert_chain(certfile=cert_path, keyfile=key_path)
@@ -227,16 +226,14 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                         print(f"[!!!!!unencrypted client] {headers[:100]}...")
 
                         # web wasaaaa detection guys T_T
-
-                        ice_match = re.search(b'/ice_module.wasm', headers, flags=re.IGNORECASE)
-
-                        if ice_match:
-                            with open("ice_module.wasm", "rb") as r:
-                                ice_ejecu = r.read()
-                                wasm_len = len(ice_ejecu)
-                                headers_w_ice = (f'HTTP/1.1 200 OK\r\nContent-Type: application/wasm\r\nContent-Length: {wasm_len}\r\n\r\n').encode()
-                                c_ssl.sendall(headers_w_ice + ice_ejecu)
-                                continue
+                        # ice_match = re.search(b'/ice_module.wasm', headers, flags=re.IGNORECASE)
+                        # if ice_match:
+                        #     with open("ice_module.wasm", "rb") as r:
+                        #         ice_ejecu = r.read()
+                        #         wasm_len = len(ice_ejecu)
+                        #         headers_w_ice = (f'HTTP/1.1 200 OK\r\nContent-Type: application/wasm\r\nContent-Length: {wasm_len}\r\n\r\n').encode()
+                        #         c_ssl.sendall(headers_w_ice + ice_ejecu)
+                        #         continue
 
                         s_ssl.sendall(full_package)
 
@@ -260,13 +257,15 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                         headers = ICE_s(headers)
                         full_package = headers + body
 
-                        if b'content-type: text/html' in headers:
-                            full_package = inyect_ice(full_package)
-                        else:
-                            print("[!] No html no bitches :C")
+                        # C++/WASM & JS injection disabled for WIP passthrough test
+                        # if b'content-type: text/html' in headers:
+                        #     full_package = inyect_ice(full_package)
+                        # else:
+                        #     print("[!] No html no bitches :C")
 
                         print(f"[!!!!!unencrypted server] {headers[:100]}...")
                         c_ssl.sendall(full_package)
+
         else:
             server_socket.connect((urlparsed, url_port))
             server_socket.sendall(brute_data)
@@ -304,29 +303,6 @@ def connect_or_else(method, complete_url):
 
 cert_lock = threading.Lock()
 
-def certificade_forge(domain):
-    os.makedirs("certs", exist_ok=True)
-    cert_path = f"certs/{domain}.crt"
-    key_path = f"certs/{domain}.key"
-    csr_path = f"certs/{domain}.csr"
-    ext_path = f"certs/{domain}.ext"
-
-    with cert_lock:
-        if os.path.exists(cert_path):
-            return cert_path, key_path
-
-        print(f"[*]Fake identity forge for: {domain}")
-
-        with open(ext_path, "w") as f:
-            f.write(f"subjectAltName=DNS:{domain}\n")
-            f.write("extendedKeyUsage=serverAuth\n")
-
-        subprocess.run(["openssl", "genrsa", "-out", key_path, "2048"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["openssl", "req", "-new", "-key", key_path, "-out", csr_path, "-subj", f"/CN={domain}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  
-        subprocess.run(["openssl", "x509", "-req", "-in", csr_path, "-CA", "blackwall_ca.crt", "-CAkey", "blackwall_ca.key", "-CAcreateserial", "-out", cert_path, "-days", "365", "-extfile", ext_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    return cert_path, key_path
-
 def inyect_ice(brute_package):
     try:
         with open("ice_module.js", "r", encoding="utf-8") as f:
@@ -334,15 +310,18 @@ def inyect_ice(brute_package):
     except FileNotFoundError:
         return brute_package
 
-    ice_payload = f"<script>{ice_js} Module.onRuntimeInitialized = function() {{ Module.ccall('deploy_defense', null, [], []); }};</script>"
+    ice_payload = f"<script>\n{ice_js}\nif (typeof Module !== 'undefined') {{ Module.onRuntimeInitialized = function() {{ if (typeof Module.ccall === 'function') Module.ccall('deploy_defense', null, [], []); }}; }}\n</script>"
+
     ice_payload_bytes = ice_payload.encode('utf-8')
 
     brute_package = re.sub(
         b"(<head\\b[^>]*>)", 
-        b"\\g<1>" + ice_payload_bytes, 
-        1, 
+        lambda match: match.group(1) + ice_payload_bytes, 
+        brute_package,
+        count=1, 
         flags=re.IGNORECASE
     )
+
 
     if b"\r\n\r\n" in brute_package:
             headers, body = brute_package.split(b"\r\n\r\n", 1)
@@ -363,8 +342,12 @@ def ICE_s(server_responce):
         print("[!] Black Wall security bypass (CSP removed)!!")
     return server_responce
 
+
 if __name__ == '__main__':
+
     try:
         listen()
     except KeyboardInterrupt:
         print("[Black Wall] is stopping, goodbye!")
+        
+        
