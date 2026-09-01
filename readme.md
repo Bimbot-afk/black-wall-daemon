@@ -26,6 +26,8 @@
 
 ## How to install and run
 
+*>Note, if you want to see the dashboard, you need to run the python script, because it creates a simple server to host the html page and listen for api requests.*
+
 1. **Install dependencies:**
    Make sure you have Python installed, then run:
    ```bash
@@ -63,8 +65,16 @@ With this, you can discover which services track your browsing, analyze the netw
 
 ## Future Improvements (Roadmap)
 The project is constantly evolving. Some of the features planned for the future are:
-- [ ] **AdBlocker**: Ability to intercept and discard requests directed at known ad servers before they even leave your network.
-- [ ] **Custom Blacklists**: You will be able to add your own list of blocked domains to prevent connections to unwanted services.
-- [ ] **Dashboard**: A user-friendly interface to visualize real-time traffic in a cleaner way.
+- [ ] **AdBlocker**: Ability to intercept and discard requests directed at known ad servers before they even leave your network. (So complex 🥀)
+- [x] **Custom Blacklists**: You will be able to add your own list of blocked domains to prevent connections to unwanted services.
+- [x] **Dashboard**: A user-friendly interface to visualize real-time traffic in a cleaner way.
 ---
-> *"Know your traffic, rule your network."*
+
+## What I have learned?
+
+This project were really complex and im kinda sad for not achive being able to eddit the html of the page, and inyect the c++ to destroy the adds, maybe next time with more time i will reach it! even tho I can proudly say I learned a lot about everything related with networking, sockets, how works a MITM,
+what is actually a proxy, how works the HTTP and the BIG diference with HTTPS, certifcates.
+
+Also I noticed the amount of telemetry and data tracking that modern websites do, it's really impresive, and how many things run in the background without our knoledge.
+
+if u reading this, thanks <3.
