@@ -26,7 +26,13 @@
 
 ## How to install and run
 
-*>Note, if you want to see the dashboard, you need to run the python script, because it creates a simple server to host the html page and listen for api requests.*
+> [!IMPORTANT]
+> **Before running the proxy, you must generate the Root CA:**
+> ```bash
+> ./generate_ca.bat
+> ```
+> **Why is this needed?** This script creates a master Certificate Authority (`blackwall_ca.crt`) that the proxy uses to dynamically sign fake certificates for the servers you connect to. Without it, the proxy won't be able to intercept HTTPS traffic.
+
 
 1. **Install dependencies:**
    Make sure you have Python installed, then run:
