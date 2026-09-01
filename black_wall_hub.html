@@ -11,7 +11,7 @@
             --border: #fee801;
             --text: #55ead4;
             --text-muted: #c5003c;
-            --red: #880425;
+            --red: #ff3366;
         }
 
         body {
@@ -104,7 +104,12 @@
         }
 
         .blocked {
-            color: var (--red);
+            color: var(--red);
+            font-weight: bold;
+        }
+
+        .tracker {
+            color: var(--red);
             font-weight: bold;
         }
     </style>
@@ -112,8 +117,8 @@
 
 <body>
 
-    <div class="pannel">
-        <h2>STADISTICS</h2>
+    <div class="panel">
+        <h2>STATISTICS</h2>
         <div class="stat-label">INTERCEPTED CONNECTIONS</div>
         <div class="stat-box" id="stat-total">0</div>
         <div class="stat-label">BLOCKED CONNECTIONS</div>
@@ -143,27 +148,47 @@
     </div>
 
     <script>
+        const trackerKeywords = ['analytics', 'beacon', 'telemetry', 'adsystem', 'doubleclick', 'pub.network', 'track', 'pixel', 'metrics', 'log', 'ads'];
+
         async function fetchData() {
             try {
-                const responce = await fetch('api/data');
-                const data = await responce.json();
+                const response = await fetch('/api/data');
+                const data = await response.json();
 
-                document.getElementById('stat-total').innerText = data.stats.total_conenections;
-                document.getElementById('stat-blocked').innerText = data.stats.blocked_connections;
+                document.getElementById('stat-total').innerText = (data.stats && data.stats.total_connections) || 0;
+                document.getElementById('stat-blocked').innerText = (data.stats && data.stats.blocked_connections) || 0;
 
-                documet.getElementById('blacklist').innerHTML = data.blocked_domains.map(d => `<li>[X] ${d}</li>`).join("");
+                document.getElementById('blacklist').innerHTML = (data.blocked_domains || []).map(d => `<li>[X] ${d}</li>`).join("");
 
-                document.getElementById('log-table').innerHTML = data.logs.map(log => {
-                    const statusClass = log.status === 'BLOCKED' ? 'blocked' : '';
-                    return `<tr><td class="${statusClass}">${log.status}</td><td>${log.method}</td><td>${log.domain}</td></tr>`;
+                document.getElementById('log-table').innerHTML = (data.logs || []).map(log => {
+                    const isBlocked = log.status === 'BLOCKED';
+                    const domainStr = log.domain || '';
+                    const isTracker = trackerKeywords.some(kw => domainStr.toLowerCase().includes(kw));
+
+                    let statusClass = isBlocked ? "blocked" : "";
+                    let domainHtml = domainStr;
+
+                    if (isTracker && !isBlocked) {
+                        domainHtml = `<span class="tracker">${domainStr} 🥀 Corpos wants mommy/daddy data</span>`;
+                    }
+
+                    const timeStr = log.time || log.timestamp || '-';
+
+                    return `<tr>
+                        <td>${timeStr}</td>
+                        <td>${log.method || ''}</td>
+                        <td>${domainHtml}</td>
+                        <td class="${statusClass}">${log.status || ''}</td>
+                    </tr>`;
+
                 }).join('');
             } catch (e) {
-                console.error("Fallo de conexión con el Hub API.");
+                console.error("Fallo de conexión con el Hub API.", e);
             }
         }
 
-        async function blockUrl() {
-            const input = documet.getElementById('domain-input');
+        async function addBlockedUrl() {
+            const input = document.getElementById('domain-input');
             const domain = input.value.trim();
             if (!domain) return;
 
@@ -171,7 +196,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ domain: domain })
-            })
+            });
             input.value = '';
             fetchData();
         }

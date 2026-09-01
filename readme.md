@@ -24,6 +24,25 @@
 </div>
 <br>
 
+## How to install and run
+
+1. **Install dependencies:**
+   Make sure you have Python installed, then run:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Run the daemon:**
+   Start the proxy server by executing:
+   ```bash
+   python black_wall.py
+   ```
+
+3. **Configuration:**
+   - Configure your browser or OS proxy to route traffic to `127.0.0.1:8080`.
+   - Install the generated `blackwall_ca.crt` in your trusted Root Certification Authorities to avoid browser warnings.
+   - Access the control hub at `http://127.0.0.1:5000` to monitor traffic and block domains.
+
 ## What is Black Wall?
 **Black Wall** is a MITM (Man-In-The-Middle) proxy developed in Python. It runs locally on port `8080` and listens to, intercepts, and analyzes HTTP and HTTPS requests made through your browser. 
 

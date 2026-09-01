@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 import threading
 import select
 import os, subprocess, ssl, re
+from datetime import datetime
 import decompiler as decm
 import certificad_forge as forge
 import json
@@ -12,22 +13,27 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 HOST = '127.0.0.1'
 PORT = 8080
 proxy_stats = {
-    "total_conenections": 0,
+    "total_connections": 0,
     "blocked_connections": 0
 }
 
 blocked_domains = set()
 conection_logs = []
-stats_lock = threading.lock()
+stats_lock = threading.Lock()
 
 def update_logs(domain, method, status):
-    # sorta """safe""" 
-    with  stats_lock:
+    # safe log update
+    with stats_lock:
         if status == "BLOCKED":
             proxy_stats["blocked_connections"] += 1
-        proxy_stats["total_conenections"] += 1
+        proxy_stats["total_connections"] += 1
 
-        log_entry = {"domain": domain, "method": method, "status": status}
+        log_entry = {
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "domain": str(domain),
+            "method": str(method),
+            "status": str(status)
+        }
         conection_logs.insert(0, log_entry)
         if len(conection_logs) > 67:
             conection_logs.pop()
@@ -59,14 +65,18 @@ def handle_client(c_socket):
             return
 
         method, complete_url = split_petition_data(brute_data)
-        if method is None and complete_url is None:
+        if method is None or complete_url is None:
             c_socket.close()
             return
 
-        urlparsed, url_port = connect_or_else(method, complete_url)
+        urlparsed, url_port = connect_or_else(method, complete_url, brute_data)
+
+        if not urlparsed:
+            c_socket.close()
+            return
 
         with stats_lock:
-            is_blocked = any(blocked_domain in urlparsed for blocked_domain in blocked_domains)
+            is_blocked = any(blocked_domain in urlparsed for blocked_domain in blocked_domains if blocked_domain)
 
         if is_blocked:
             print(f"[X] Blocked: {urlparsed} HA that bitch aint connecting >:D ( url in ur black list)")
@@ -110,7 +120,7 @@ def listen():
 
         while True:
             c_socket, c_address = s_socket.accept()
-            threading.Thread(target=handle_client, args=(c_socket,)).start()
+            threading.Thread(target=handle_client, args=(c_socket,), daemon=True).start()
 
 def chunk_paser(sock, initial_buffer=b""):
     full_body = bytearray()
@@ -154,7 +164,7 @@ def read_http_message(sock):
         buffer += chunk
 
     if b"\r\n\r\n" not in buffer:
-        return buffer, b""
+        return None, None
 
     headers_bytes, leftover_body = buffer.split(b"\r\n\r\n", 1)
     headers_bytes += b"\r\n\r\n"
@@ -177,7 +187,7 @@ def read_http_message(sock):
                 if not chunk:
                     break
                 body.extend(chunk)
-            body = bytes(body)
+            body = bytes(body[:expected_length])
         else:
             body = leftover_body
 
@@ -231,6 +241,8 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
 
                 server_socket.connect((url_host, url_port))
                 ctx_client = ssl.create_default_context()
+                ctx_client.check_hostname = False
+                ctx_client.verify_mode = ssl.CERT_NONE
                 ctx_client.set_alpn_protocols(["http/1.1"])
                 s_ssl = ctx_client.wrap_socket(server_socket, server_hostname=url_host)
 
@@ -258,16 +270,6 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                         full_package = headers + body
                         print(f"[!!!!!unencrypted client] {headers[:100]}...")
 
-                        # web wasaaaa detection guys T_T
-                        # ice_match = re.search(b'/ice_module.wasm', headers, flags=re.IGNORECASE)
-                        # if ice_match:
-                        #     with open("ice_module.wasm", "rb") as r:
-                        #         ice_ejecu = r.read()
-                        #         wasm_len = len(ice_ejecu)
-                        #         headers_w_ice = (f'HTTP/1.1 200 OK\r\nContent-Type: application/wasm\r\nContent-Length: {wasm_len}\r\n\r\n').encode()
-                        #         c_ssl.sendall(headers_w_ice + ice_ejecu)
-                        #         continue
-
                         s_ssl.sendall(full_package)
 
                     elif sock is s_ssl:
@@ -290,12 +292,6 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
                         headers = ICE_s(headers)
                         full_package = headers + body
 
-                        # C++/WASM & JS injection disabled for WIP passthrough test
-                        # if b'content-type: text/html' in headers:
-                        #     full_package = inyect_ice(full_package)
-                        # else:
-                        #     print("[!] No html no bitches :C")
-
                         print(f"[!!!!!unencrypted server] {headers[:100]}...")
                         c_ssl.sendall(full_package)
 
@@ -313,9 +309,13 @@ def daemon_blackwall(urlparsed, brute_data, c_socket, method, url_host, url_port
 def split_petition_data(brute_data):
     petition = brute_data.decode('utf-8', errors='ignore')
     petition_lines = petition.split('\r\n')
+    if not petition_lines or not petition_lines[0]:
+        return None, None
     petition_line_one = petition_lines[0]
     try:
         complete_url = petition_line_one.split(' ')
+        if len(complete_url) < 2:
+            return None, None
         method = complete_url[0]
     except Exception:
         print("[!] No such valid petition D:")
@@ -323,13 +323,33 @@ def split_petition_data(brute_data):
     
     return method, complete_url
 
-def connect_or_else(method, complete_url):
+def connect_or_else(method, complete_url, brute_data=b""):
+    if len(complete_url) < 2:
+        return None, 80
+
+    url_target = complete_url[1]
     if method == 'CONNECT':
-        url_host = complete_url[1].split(':')[0]
-        return url_host, 443
+        host_part = url_target.split(':')[0]
+        port = 443
+        if ':' in url_target:
+            try:
+                port = int(url_target.split(':')[1])
+            except ValueError:
+                port = 443
+        return host_part, port
     else:
-        urlparsed = urlparse(complete_url[1]).hostname
-        url_port = urlparse(complete_url[1]).port
+        parsed = urlparse(url_target)
+        urlparsed = parsed.hostname
+        url_port = parsed.port
+
+        if not urlparsed:
+            # Fallback to Host header in brute_data
+            host_match = re.search(br"Host:\s*([^\r\n:]+)(?::(\d+))?", brute_data, re.IGNORECASE)
+            if host_match:
+                urlparsed = host_match.group(1).decode('utf-8', errors='ignore')
+                if host_match.group(2):
+                    url_port = int(host_match.group(2).decode())
+
         if url_port is None:
             url_port = 80
         return urlparsed, url_port 
@@ -380,44 +400,53 @@ class hub_handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        if self.path =="/":
-            self.send_responce(200)
-            self.send_header("Content-type", "text/html")
+        if self.path in ("/", "/black_wall_hub.html"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             try:
-                with open('hub.html', 'rb') as f:
+                with open('black_wall_hub.html', 'rb') as f:
                     self.wfile.write(f.read())
             except FileNotFoundError:
-                self.wfile.write(b"<h1> Erros: hub.html didn't be found :C")
+                self.wfile.write(b"<h1>Error: black_wall_hub.html not found :C</h1>")
 
         elif self.path == '/api/data':
-            self.send_responce(200)
-            self.send_header('Content.type', 'application/json')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
             self.end_headers()
 
             with stats_lock:
                 data_hub = {
                     "stats": proxy_stats,
-                    "blocked": list(blocked_domains),
+                    "blocked_domains": list(blocked_domains),
                     "logs": conection_logs
                 }
             self.wfile.write(json.dumps(data_hub).encode("utf-8"))
+        else:
+            self.send_response(404)
+            self.end_headers()
 
     def do_POST(self):
         if self.path == '/api/block':
             longitud = int(self.headers.get('Content-Length', 0))
             if longitud > 0:
                 body = self.rfile.read(longitud)
-                data = json.loads(body.decode('utf-8'))
-                domain_to_bloq = data.get("domain")
+                try:
+                    data = json.loads(body.decode('utf-8'))
+                    domain_to_bloq = data.get("domain")
 
-                if domain_to_bloq:
-                    with stats_lock:
-                        blocked_domains.add(domain_to_bloq)
-                    print(f"[BLOCKED] {domain_to_bloq} was BLOCKED by user ^_^")
-                    
-                self.send_response(200)
-                self.end_headers()
+                    if domain_to_bloq:
+                        with stats_lock:
+                            blocked_domains.add(domain_to_bloq)
+                        print(f"[BLOCKED] {domain_to_bloq} was BLOCKED by user ^_^")
+                except Exception as e:
+                    print(f"[!] Error parsing block payload: {e}")
+
+            self.send_response(200)
+            self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
 
 def start_hub():
     hub_server = HTTPServer(('127.0.0.1', 5000), hub_handler)
@@ -430,6 +459,6 @@ if __name__ == '__main__':
         threading.Thread(target=start_hub, daemon=True).start()
         listen()
     except KeyboardInterrupt:
-        print("[Black Wall] is stopping, goodbye!")
+        print("\n[Black Wall] is stopping, goodbye!")
         
         

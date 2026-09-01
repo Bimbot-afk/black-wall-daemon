@@ -8,14 +8,15 @@ cert_lock = threading.Lock()
 
 def certificade_forge(domain):
     os.makedirs("certs", exist_ok=True)
-    cert_path = f"certs/{domain}.crt"
-    key_path = f"certs/{domain}.key"
+    clean_domain = str(domain).split(':')[0].strip() if domain else "unknown"
+    cert_path = f"certs/{clean_domain}.crt"
+    key_path = f"certs/{clean_domain}.key"
 
     with cert_lock:
         if os.path.exists(cert_path):
             return cert_path, key_path
 
-        print(f"[*]Fake identity forge for: {domain}")
+        print(f"[*] Fake identity forge for: {clean_domain}")
 
         with open("blackwall_ca.crt", "rb") as f:
             ca_cert = x509.load_pem_x509_certificate(f.read())
@@ -29,7 +30,7 @@ def certificade_forge(domain):
         )
 
         subject = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, domain),
+            x509.NameAttribute(NameOID.COMMON_NAME, clean_domain),
         ])
 
         builder = x509.CertificateBuilder()
@@ -43,7 +44,7 @@ def certificade_forge(domain):
         builder = builder.not_valid_after(now + datetime.timedelta(days=365))
 
         builder = builder.add_extension(
-            x509.SubjectAlternativeName({x509.DNSName(domain)}),
+            x509.SubjectAlternativeName([x509.DNSName(clean_domain)]),
             critical=False
         )
 
@@ -65,6 +66,6 @@ def certificade_forge(domain):
             f.write(new_cert.public_bytes(serialization.Encoding.PEM))
 
 
-        print(f"[+] SSL Certificate for {domain} generated.")
+        print(f"[+] SSL Certificate for {clean_domain} generated.")
         
-        return cert_path, key_path
+        return cert_path, key_path
