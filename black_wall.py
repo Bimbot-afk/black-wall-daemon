@@ -5,11 +5,32 @@ import select
 import os, subprocess, ssl, re
 import decompiler as decm
 import certificad_forge as forge
+import json
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
 HOST = '127.0.0.1'
 PORT = 8080
- 
+proxy_stats = {
+    "total_conenections": 0,
+    "blocked_connections": 0
+}
+
+blocked_domains = set()
+conection_logs = []
+stats_lock = threading.lock()
+
+def update_logs(domain, method, status):
+    # sorta """safe""" 
+    with  stats_lock:
+        if status == "BLOCKED":
+            proxy_stats["blocked_connections"] += 1
+        proxy_stats["total_conenections"] += 1
+
+        log_entry = {"domain": domain, "method": method, "status": status}
+        conection_logs.insert(0, log_entry)
+        if len(conection_logs) > 67:
+            conection_logs.pop()
 
 def check_certs():
     os.makedirs("certs", exist_ok=True)
@@ -43,8 +64,20 @@ def handle_client(c_socket):
             return
 
         urlparsed, url_port = connect_or_else(method, complete_url)
-        print(f"[+] Recived petition for site:{method} -> {urlparsed}:{url_port}")
-        
+
+        with stats_lock:
+            is_blocked = any(blocked_domain in urlparsed for blocked_domain in blocked_domains)
+
+        if is_blocked:
+            print(f"[X] Blocked: {urlparsed} HA that bitch aint connecting >:D ( url in ur black list)")
+            update_logs(urlparsed, method, "BLOCKED")
+            c_socket.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\nBlack Wall: Access Denied")
+            c_socket.close()
+            return
+
+        update_logs(urlparsed, method, "ALLOWED")
+        print(f"[+] ALLOWED: site:{method} -> {urlparsed}:{url_port}, Good boy conection :3")
+
         daemon_blackwall(urlparsed, brute_data, c_socket, method, urlparsed, url_port)
     except Exception as e:
         print(f"[!] Error handling client: {e}")
@@ -342,10 +375,59 @@ def ICE_s(server_responce):
         print("[!] Black Wall security bypass (CSP removed)!!")
     return server_responce
 
+class hub_handler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass
+
+    def do_GET(self):
+        if self.path =="/":
+            self.send_responce(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            try:
+                with open('hub.html', 'rb') as f:
+                    self.wfile.write(f.read())
+            except FileNotFoundError:
+                self.wfile.write(b"<h1> Erros: hub.html didn't be found :C")
+
+        elif self.path == '/api/data':
+            self.send_responce(200)
+            self.send_header('Content.type', 'application/json')
+            self.end_headers()
+
+            with stats_lock:
+                data_hub = {
+                    "stats": proxy_stats,
+                    "blocked": list(blocked_domains),
+                    "logs": conection_logs
+                }
+            self.wfile.write(json.dumps(data_hub).encode("utf-8"))
+
+    def do_POST(self):
+        if self.path == '/api/block':
+            longitud = int(self.headers.get('Content-Length', 0))
+            if longitud > 0:
+                body = self.rfile.read(longitud)
+                data = json.loads(body.decode('utf-8'))
+                domain_to_bloq = data.get("domain")
+
+                if domain_to_bloq:
+                    with stats_lock:
+                        blocked_domains.add(domain_to_bloq)
+                    print(f"[BLOCKED] {domain_to_bloq} was BLOCKED by user ^_^")
+                    
+                self.send_response(200)
+                self.end_headers()
+
+def start_hub():
+    hub_server = HTTPServer(('127.0.0.1', 5000), hub_handler)
+    print("\033[92m[+] CONTROL HUB ACTIVE ON >> http://127.0.0.1:5000 \033[0m")
+    hub_server.serve_forever()
+
 
 if __name__ == '__main__':
-
     try:
+        threading.Thread(target=start_hub, daemon=True).start()
         listen()
     except KeyboardInterrupt:
         print("[Black Wall] is stopping, goodbye!")

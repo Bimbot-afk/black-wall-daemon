@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Black Wall - Proxy dashboard</title>
+    <style>
+        :root {
+            --bg: #00060e;
+            --panel: #c5003c;
+            --border: #fee801;
+            --text: #55ead4;
+            --text-muted: #c5003c;
+            --red: #880425;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            height: 90vh;
+        }
+
+        .panel {
+            background-color: var(--panel);
+            border: 1px solid var(--border);
+            padding: 15px;
+            overflow: auto;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .stat-box {
+            font-size: 2rem;
+            margin: 10px 0;
+            color: whitesmoke
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+
+        input {
+            width: 100%;
+            padding: 8px;
+            background: black;
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: inherit;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 8px;
+            background: var(--text);
+            color: black;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+
+        button:hover {
+            background: whitesmoke;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        li {
+            padding: 5px 0;
+            border-bottom: 1px dashed var(--border);
+            word-break: break-all;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .blocked {
+            color: var (--red);
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="pannel">
+        <h2>STADISTICS</h2>
+        <div class="stat-label">INTERCEPTED CONNECTIONS</div>
+        <div class="stat-box" id="stat-total">0</div>
+        <div class="stat-label">BLOCKED CONNECTIONS</div>
+        <div class="stat-box" id="stat-blocked" style="color: var(--red);">0</div>
+
+        <h2 style="margin-top: 30px;">ADD URL TO BLOCK LIST</h2>
+        <input type="text" id="domain-input" placeholder="Domain or IP ex. doubleclick.net">
+        <button onclick="addBlockedUrl()">ADD BLOCKED URL</button>
+
+        <h2 style="margin-top: 30px">BLACK LIST ACTIVE :D</h2>
+        <ul id="blacklist"></ul>
+    </div>
+
+    <div class="dashboard">
+        <h2>TRAFFIC LOGS IN REAL TIME C: (last 67 records)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>TIME</th>
+                    <th>METHOD</th>
+                    <th>URL</th>
+                    <th>STATUS</th>
+                </tr>
+            </thead>
+            <tbody id="log-table"></tbody>
+        </table>
+    </div>
+
+    <script>
+        async function fetchData() {
+            try {
+                const responce = await fetch('api/data');
+                const data = await responce.json();
+
+                document.getElementById('stat-total').innerText = data.stats.total_conenections;
+                document.getElementById('stat-blocked').innerText = data.stats.blocked_connections;
+
+                documet.getElementById('blacklist').innerHTML = data.blocked_domains.map(d => `<li>[X] ${d}</li>`).join("");
+
+                document.getElementById('log-table').innerHTML = data.logs.map(log => {
+                    const statusClass = log.status === 'BLOCKED' ? 'blocked' : '';
+                    return `<tr><td class="${statusClass}">${log.status}</td><td>${log.method}</td><td>${log.domain}</td></tr>`;
+                }).join('');
+            } catch (e) {
+                console.error("Fallo de conexión con el Hub API.");
+            }
+        }
+
+        async function blockUrl() {
+            const input = documet.getElementById('domain-input');
+            const domain = input.value.trim();
+            if (!domain) return;
+
+            await fetch('/api/block', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domain: domain })
+            })
+            input.value = '';
+            fetchData();
+        }
+
+        setInterval(fetchData, 670);
+        fetchData();
+    </script>
+</body>
+
+</html>
