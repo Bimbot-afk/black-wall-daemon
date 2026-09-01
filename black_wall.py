@@ -20,6 +20,34 @@ proxy_stats = {
 blocked_domains = set()
 conection_logs = []
 stats_lock = threading.Lock()
+BLACK_LIST_FILE = "black_list.json"
+
+def check_if_exists_black_list():
+    if not os.path.exists(BLACK_LIST_FILE):
+        with open(BLACK_LIST_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
+        print("[+] Black list created.")
+    else:
+        print("[+] Black list found, loading...")
+    return True
+
+def load_black_list():
+    global blocked_domains
+    if check_if_exists_black_list():
+        try:
+            with open(BLACK_LIST_FILE, "r", encoding="utf-8") as f:
+                domains = json.load(f)
+                blocked_domains = set(domains)
+                print(f"[+] Black list loaded from disc: {len(blocked_domains)} domains")
+        except Exception as e:
+            print(f"[!] Error loading black list from disc: {e}")
+
+def save_black_list():
+    with open(BLACK_LIST_FILE, "w", encoding="utf-8") as f:
+        json.dump(list(blocked_domains), f)
+
+load_black_list()
+
 
 def update_logs(domain, method, status):
     # safe log update
@@ -438,6 +466,7 @@ class hub_handler(BaseHTTPRequestHandler):
                     if domain_to_bloq:
                         with stats_lock:
                             blocked_domains.add(domain_to_bloq)
+                            save_black_list()
                         print(f"[BLOCKED] {domain_to_bloq} was BLOCKED by user ^_^")
                 except Exception as e:
                     print(f"[!] Error parsing block payload: {e}")
