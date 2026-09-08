@@ -41,7 +41,7 @@
    ```
 
 2. **Run the daemon:**
-   Start the proxy server by executing:
+   Start the proxy server by executing: (if dosent work try running it on git bash)
    ```bash
    python black_wall.py
    ```
