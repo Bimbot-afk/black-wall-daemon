@@ -41,7 +41,7 @@
    ```
 
 2. **Run the daemon:**
-   Start the proxy server by executing:
+   Start the proxy server by executing: (if dosent work try running it on git bash)
    ```bash
    python black_wall.py
    ```
@@ -72,7 +72,7 @@ It runs 100% locally. The proxy acts as a transparent middleman, decrypting HTTP
 ## Roadmap
 - [ ] **AdBlocker**: Drop requests to known ad servers. (So complex 🥀)
 - [x] **Custom Blacklists**: Block specific domains.
-- [x] **Dashboard**: Real-time traffic visualization.
+- [x] **Dashboard**: Real time traffic visualization.
 ---
 
 ## What I have learned?
@@ -83,4 +83,3 @@ what is actually a proxy, how works the HTTP and the BIG diference with HTTPS, c
 Also I noticed the amount of telemetry and data tracking that modern websites do, it's really impresive, and how many things run in the background without our knoledge.
 
 if u reading this, thanks <3.
-
