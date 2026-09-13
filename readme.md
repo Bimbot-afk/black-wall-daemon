@@ -29,7 +29,8 @@
 > [!IMPORTANT]
 > **Before running the proxy, you need a Root CA to intercept HTTPS:**
 > 1. Make sure you have OpenSSL installed and added to your PATH.
-> 2. Double click `generate_ca.bat` to run it. 
+> 2. Download the batch file "Generate CA"
+> 3. Double click `generate_ca.bat` to run it. 
 > 
 > This creates a master certificate (`blackwall_ca.crt`) that Black Wall uses to dynamically sign fake certificates for the servers you connect to. Without it, the proxy won't be able to read HTTPS traffic.
 
@@ -47,9 +48,9 @@
    ```
 
 3. **Configuration:**
-   - Configure your browser or OS proxy to route traffic to `127.0.0.1:8080`.
-   - Install the generated `blackwall_ca.crt` in your trusted Root Certification Authorities to avoid browser warnings.
-   - Access the control hub at `http://127.0.0.1:5000` to monitor traffic and block domains.
+   - Configure your browser or OS proxy to route traffic to `127.0.0.1:8080`. (on windows type `"network proxy"` in the start menu and configure it)
+   - Install the generated `blackwall_ca.crt` in your trusted Root Certification Authorities to avoid browser warnings. (to do that double click on it, click en install certificate, select local machine, then trusted root certification authorities and finish)
+   - Access the control hub at `http://127.0.0.1:5000` to monitor traffic and block domains. (you can copy and paste this link in ur browser.)
 
 ## What is Black Wall?
 Black Wall is a local Python based MITM (Man In The Middle) proxy. It listens on port `8080` and intercepts HTTP/HTTPS requests so you can see exactly what your browser is doing behind the scenes.
