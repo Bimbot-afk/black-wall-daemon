@@ -27,11 +27,11 @@
 ## How to install and run
 
 > [!IMPORTANT]
-> **Before running the proxy, you must generate the Root CA:**
-> ```bash
-> ./generate_ca.bat
-> ```
-> **Why is this needed?** This script creates a master Certificate Authority (`blackwall_ca.crt`) that the proxy uses to dynamically sign fake certificates for the servers you connect to. Without it, the proxy won't be able to intercept HTTPS traffic.
+> **Before running the proxy, you need a Root CA to intercept HTTPS:**
+> 1. Make sure you have OpenSSL installed and added to your PATH.
+> 2. Double click `generate_ca.bat` to run it. 
+> 
+> This creates a master certificate (`blackwall_ca.crt`) that Black Wall uses to dynamically sign fake certificates for the servers you connect to. Without it, the proxy won't be able to read HTTPS traffic.
 
 
 1. **Install dependencies:**
@@ -52,28 +52,27 @@
    - Access the control hub at `http://127.0.0.1:5000` to monitor traffic and block domains.
 
 ## What is Black Wall?
-**Black Wall** is a MITM (Man-In-The-Middle) proxy developed in Python. It runs locally on port `8080` and listens to, intercepts, and analyzes HTTP and HTTPS requests made through your browser. 
+Black Wall is a local Python based MITM (Man In The Middle) proxy. It listens on port `8080` and intercepts HTTP/HTTPS requests so you can see exactly what your browser is doing behind the scenes.
 
-## Why use Black Wall?
-Thanks to Black Wall, it is possible to have **total visibility** over the connections your browser makes in the background. You will be able to know:
-- Exactly which servers you connect to.
-- Which HTTP methods are used (GET, POST, CONNECT, etc.).
-- Deduce the purpose of each connection (telemetry, trackers, etc.).
-With this, you can discover which services track your browsing, analyze the network traffic of web applications, and take control of your data.
+## Features
+I built this to get full visibility over background connections. It helps you find out:
+- Which servers you're actually connecting to.
+- The HTTP methods being used.
+- Background telemetry and trackers hiding in plain sight.
 
-## Is it safe? Will I get hacked?
-**No.** The proxy runs entirely locally on your own machine and network. Currently, it acts as a "transparent glass": it allows you to see all the traffic passing through it without maliciously modifying the packets you send or receive. It works by intercepting certificates and generating fake ones on the fly to decrypt HTTPS traffic locally before re-encrypting it towards the original destination, but everything happens strictly inside your PC.
-## How does it work?
-1. **Traffic Interception**: You configure your operating system or browser to send all its web traffic to `127.0.0.1:8080`.
-2. **Dynamic Certificate Generation**: When you try to access a secure site (HTTPS), Black Wall intercepts the `CONNECT` request, temporarily halts the flow, and instantly forges a valid SSL certificate for that specific domain (signed by its own local CA).
-3. **Decryption and Analysis**: The browser trusts the fake certificate (provided you have installed the CA on your system), allowing Black Wall to decrypt and read the packets in plain text.
-4. **Forwarding**: Finally, the proxy repackages the request and sends it through a secure channel to the real destination server. The response takes the same journey back.
+## Security
+It runs 100% locally. The proxy acts as a transparent middleman, decrypting HTTPS traffic locally using on-the-fly fake certificates, then re-encrypting it to the real server. Your traffic doesn't leave your PC except to go to its actual destination.
 
-## Future Improvements (Roadmap)
-The project is constantly evolving. Some of the features planned for the future are:
-- [ ] **AdBlocker**: Ability to intercept and discard requests directed at known ad servers before they even leave your network. (So complex 🥀)
-- [x] **Custom Blacklists**: You will be able to add your own list of blocked domains to prevent connections to unwanted services.
-- [x] **Dashboard**: A user-friendly interface to visualize real-time traffic in a cleaner way.
+## How it works
+1. Point your OS/browser proxy to `127.0.0.1:8080`.
+2. Black Wall intercepts `CONNECT` requests for HTTPS sites and forges a valid SSL certificate on the fly using the local CA.
+3. Once the browser trusts the fake cert, Black Wall decrypts and logs the packets.
+4. The request is forwarded securely to the real server.
+
+## Roadmap
+- [ ] **AdBlocker**: Drop requests to known ad servers. (So complex 🥀)
+- [x] **Custom Blacklists**: Block specific domains.
+- [x] **Dashboard**: Real-time traffic visualization.
 ---
 
 ## What I have learned?
@@ -84,3 +83,4 @@ what is actually a proxy, how works the HTTP and the BIG diference with HTTPS, c
 Also I noticed the amount of telemetry and data tracking that modern websites do, it's really impresive, and how many things run in the background without our knoledge.
 
 if u reading this, thanks <3.
+

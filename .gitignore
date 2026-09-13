@@ -12,3 +12,9 @@ certs/
 compile_commands.json
 emsdk/
 *.zip
+.toc
+build/
+*.spec
+.cache/
+.antigravitycli/
+black_list.json
