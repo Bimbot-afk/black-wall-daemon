@@ -84,3 +84,51 @@ what is actually a proxy, how works the HTTP and the BIG diference with HTTPS, c
 Also I noticed the amount of telemetry and data tracking that modern websites do, it's really impresive, and how many things run in the background without our knoledge.
 
 if u reading this, thanks <3.
+# Generación de Certificados SSL para Desarrollo local
+
+Si el script `.bat` no está generando el certificado o el archivo `.ca` correctamente (esto puede suceder por bloqueos del Antivirus o problemas de entorno en la máquina virtual/VPS donde se prueba el proyecto), sigue estas instrucciones para generarlos de manera manual.
+
+Hay dos opciones: usar **mkcert** (recomendada porque el navegador confiará en el certificado y es muy sencilla) o usar **OpenSSL**.
+
+---
+
+## Opción 1: Usar `mkcert` (Recomendado)
+
+`mkcert` crea una Autoridad Certificadora (CA) local en tu equipo para que el navegador no te muestre la advertencia de "Sitio no seguro".
+
+### Paso 1: Instalar mkcert
+- **En Windows:** Abre PowerShell como Administrador y usa Chocolatey:
+  ```powershell
+  choco install mkcert
+  ```
+  *(Alternativa: Descarga el ejecutable desde el [GitHub de mkcert](https://github.com/FiloSottile/mkcert/releases)).*
+- **En macOS:** `brew install mkcert`
+- **En Linux:** `sudo apt install libnss3-tools` y sigue las instrucciones de su repositorio.
+
+### Paso 2: Crear e instalar la Autoridad Certificadora (CA)
+En la terminal, ejecuta este comando para que tu equipo confíe en los certificados locales:
+```bash
+mkcert -install
+```
+
+### Paso 3: Generar el certificado
+Ve a la carpeta de este proyecto y ejecuta:
+```bash
+mkcert -key-file key.pem -cert-file cert.pem localhost 127.0.0.1
+```
+> **Resultado:** Se crearán los archivos `key.pem` y `cert.pem`. Usa estos archivos en la configuración de tu servidor.
+
+---
+
+## Opción 2: Usar OpenSSL (Manual)
+
+Si no puedes instalar `mkcert` o estás probando el proyecto en un entorno donde prefieres no instalar herramientas extra, puedes usar OpenSSL (que viene incluido en Git Bash para Windows o en casi cualquier Linux).
+
+En tu terminal (Git Bash, WSL o Linux), ejecuta:
+```bash
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "//CN=localhost"
+```
+*(Nota: Si usas Linux o Mac, cambia `//CN=localhost` por `/CN=localhost`).*
+
+> **Resultado:** Esto generará `key.pem` (clave) y `cert.pem` (certificado). 
+> **Nota:** Con este método, al entrar desde el navegador verás una advertencia de "Sitio no seguro". Solo debes hacer clic en "Configuración avanzada" y "Continuar a localhost".
