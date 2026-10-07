@@ -2,13 +2,17 @@ import socket
 from urllib.parse import urlparse
 import threading
 import select
-import os, subprocess, ssl, re
+import os, subprocess, ssl, re, sys
 from datetime import datetime
 import tools.decompiler as decm
 import tools.certificad_forge as forge
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 HOST = '127.0.0.1'
 PORT = 8080
@@ -20,7 +24,7 @@ proxy_stats = {
 blocked_domains = set()
 conection_logs = []
 stats_lock = threading.Lock()
-BLACK_LIST_FILE = "black_list.json"
+BLACK_LIST_FILE = os.path.join(BASE_DIR, "black_list.json")
 
 def check_if_exists_black_list():
     if not os.path.exists(BLACK_LIST_FILE):
@@ -67,7 +71,7 @@ def update_logs(domain, method, status):
             conection_logs.pop()
 
 def check_certs():
-    os.makedirs("certs", exist_ok=True)
+    os.makedirs(os.path.join(BASE_DIR, "certs"), exist_ok=True)
 
 check_certs()
 
@@ -386,7 +390,7 @@ cert_lock = threading.Lock()
 
 def inyect_ice(brute_package):
     try:
-        with open("payloads/ice_module.js", "r", encoding="utf-8") as f:
+        with open(os.path.join(BASE_DIR, "payloads", "ice_module.js"), "r", encoding="utf-8") as f:
             ice_js = f.read()
     except FileNotFoundError:
         return brute_package
@@ -433,7 +437,7 @@ class hub_handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             try:
-                with open('web/black_wall_hub.html', 'rb') as f:
+                with open(os.path.join(BASE_DIR, 'web', 'black_wall_hub.html'), 'rb') as f:
                     self.wfile.write(f.read())
             except FileNotFoundError:
                 self.wfile.write(b"<h1>Error: black_wall_hub.html not found :C</h1>")

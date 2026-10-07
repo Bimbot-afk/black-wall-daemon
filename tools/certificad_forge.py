@@ -2,11 +2,15 @@ from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-import os, datetime, threading
+import os, datetime, threading, sys
 
 cert_lock = threading.Lock()
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 CA_CERT_PATH = os.path.join(BASE_DIR, "blackwall_ca.crt")
 CA_KEY_PATH = os.path.join(BASE_DIR, "blackwall_ca.key")
 CERTS_DIR = os.path.join(BASE_DIR, "certs")

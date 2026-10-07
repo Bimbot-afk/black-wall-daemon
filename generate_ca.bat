@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 echo [*] Buscando OpenSSL...
 where openssl >nul 2>nul
 if %ERRORLEVEL% neq 0 (
