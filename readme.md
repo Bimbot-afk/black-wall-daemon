@@ -132,3 +132,5 @@ openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -node
 
 > **Resultado:** Esto generará `key.pem` (clave) y `cert.pem` (certificado). 
 > **Nota:** Con este método, al entrar desde el navegador verás una advertencia de "Sitio no seguro". Solo debes hacer clic en "Configuración avanzada" y "Continuar a localhost".
+
+macondo <3
